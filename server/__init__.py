@@ -24,7 +24,7 @@ def deploy_scrcpy_server() -> tuple[subprocess.Popen, socket.socket] | Exception
 def deploy_reporter_server() -> Exception | None:
     primary_device = get_adb_device()
     if isinstance(primary_device, Exception): return primary_device
-    primary_device.forward(f"tcp:{reporter_receiver.SERVER_PORT}", f"tcp:{reporter_receiver.SERVER_PORT}")
+    primary_device.forward(f"tcp:{reporter_receiver.SERVER_PORT}", f"localabstract:{reporter_receiver.ABSTRACT_SOCKET_NAME}")
 
     package_path    = primary_device.shell("pm path " + reporter_receiver.PACKAGE_NAME)
     package_version = primary_device.shell(f"dumpsys package {reporter_receiver.PACKAGE_NAME} | grep versionName")

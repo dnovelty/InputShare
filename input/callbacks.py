@@ -8,12 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 from pynput import mouse, keyboard
 from scrcpy_client import key_scancode_map
-from scrcpy_client.android_def import AKeyCode, AKeyEventAction
+from scrcpy_client.android_def import AKeyCode, AKeyEventAction, ScreenPoint, ScreenPosition, ScreenSize
 from scrcpy_client.hid_def import HID_KEYBOARD_MAX_KEYS, HID_MouseButton, HIDKeymod, KeymodStateStore, MouseButtonStateStore
 from scrcpy_client.hid_event import HIDKeyboardInitEvent, KeyEmptyEvent, KeyEvent, MouseClickEvent, MouseMoveEvent, MouseScrollEvent, HIDMouseInitEvent
-from scrcpy_client.inject_event import InjectKeyCode
+from scrcpy_client.inject_event import InjectKeyCode, TouchMoveEvent
 from scrcpy_client.sdl_def import SDL_Scancode
+from input import position_mapping
 from input.edge_portal import edge_portal_passing_event
+from utils import clamp
 from utils.config_manager import get_config
 
 CallbackResult = Exception | None
@@ -143,6 +145,14 @@ def callback_context_wrapper(
     movement_queue: queue.Queue[tuple[int, int]] = queue.Queue(maxsize=5)
     wakeup_counter = 0
 
+    def _warp_android_pointer(x: int, y: int):
+        w, h = position_mapping.get_android_screen_size()
+        if w <= 0 or h <= 0:
+            return
+        position = ScreenPosition(ScreenSize(w, h), ScreenPoint(x, y))
+        send_data(TouchMoveEvent(position).serialize())
+    position_mapping.register_warp_callback(_warp_android_pointer)
+
     def mouse_movement_sender():
         nonlocal movement_queue, wakeup_counter
 
@@ -168,6 +178,7 @@ def callback_context_wrapper(
                 event = MouseMoveEvent(dx, dy, mouse_button_state)
                 if (res := send_data(event.serialize())) is not None:
                     schedule_exit(res); break
+                position_mapping.move_android_cursor_by(clamp(dx, -127, 127), clamp(dy, -127, 127))
                 no_move_timer = None
                 continue
             except: pass

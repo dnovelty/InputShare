@@ -5,10 +5,11 @@ from typing import Callable
 from adbutils import AdbInstallError
 from multiprocessing import freeze_support
 from server import deploy_reporter_server, deploy_scrcpy_server, scrcpy_receiver, reporter_receiver
+from input import position_mapping
 from input.callbacks import callback_context_wrapper
 from ui.connecting_window import open_connecting_window
 from ui.tray import tray_thread_factory
-from utils.adb_controller import ADBWiredConnectionError, append_adb_device, get_adb_client, start_adb_server
+from utils.adb_controller import ADBWiredConnectionError, append_adb_device, get_adb_client, get_device_screen_size, start_adb_server
 from utils.config_manager import get_config
 from utils.i18n import get_i18n
 from utils.logger import LogType, LOGGER
@@ -67,6 +68,13 @@ if __name__ == "__main__":
         close_notification_resolver(res)
         sys.exit(1)
     scrcpy_server_process, scrcpy_client_socket = res
+
+    # query the device screen size for fraction-based edge-switch position mapping
+    device_size = get_device_screen_size()
+    if isinstance(device_size, Exception):
+        LOGGER.write(LogType.Error, "Get device screen size failed: " + str(device_size))
+    else:
+        position_mapping.set_android_screen_size(*device_size)
 
     stop_scrcpy_receiver = scrcpy_receiver.server_receiver_factory(scrcpy_client_socket)
     stop_reporter_receiver: Callable | None = None

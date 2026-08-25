@@ -3,6 +3,7 @@ import threading
 import pynput
 
 from typing import Callable
+from input import position_mapping
 from server.reporter_receiver import DevicePosition
 from utils import VoidCallable, screen_size
 from utils.config_manager import get_config
@@ -103,11 +104,21 @@ def create_edge_portal():
         SIDE_MARGIN = 2
         if pause_event.is_set() or pause_edge_toggling_event.is_set(): return
         if cursor_pos_before_toggling is None: return
-        temp_x, temp_y = cursor_pos_before_toggling
-        if   is_device_at_right : mouse_controller.position = (temp_x - SIDE_MARGIN, temp_y)
-        elif is_device_at_left  : mouse_controller.position = (SIDE_MARGIN, temp_y)
-        elif is_device_at_top   : mouse_controller.position = (temp_x, SIDE_MARGIN)
-        elif is_device_at_bottom: mouse_controller.position = (temp_x, temp_y - SIDE_MARGIN)
+        android_w, android_h = position_mapping.get_android_screen_size()
+        if android_w > 0 and android_h > 0:
+            # fraction-map the Android cursor's exit position back to the PC
+            ax, ay = position_mapping.get_android_cursor()
+            pc_x, pc_y = position_mapping.map_android_to_pc(
+                ax, ay, device_direction,
+                screen_width, screen_height, android_w, android_h, SIDE_MARGIN)
+            mouse_controller.position = (pc_x, pc_y)
+        else:
+            # fallback: return to the exact position before toggling
+            temp_x, temp_y = cursor_pos_before_toggling
+            if   is_device_at_right : mouse_controller.position = (temp_x - SIDE_MARGIN, temp_y)
+            elif is_device_at_left  : mouse_controller.position = (SIDE_MARGIN, temp_y)
+            elif is_device_at_top   : mouse_controller.position = (temp_x, SIDE_MARGIN)
+            elif is_device_at_bottom: mouse_controller.position = (temp_x, temp_y - SIDE_MARGIN)
     append_edge_toggling_callback(return_to_before_toggling)
 
     # --- switch state machine (port of Server::m_switchDir / m_switchWaitTimer) ---
@@ -129,6 +140,14 @@ def create_edge_portal():
     def switch_to_device(pos: tuple[int, int]):
         nonlocal cursor_pos_before_toggling
         cursor_pos_before_toggling = pos
+        # fraction-map the PC cursor's exit position to an Android entry position
+        # and warp the Android pointer there (deskflow switchScreen/enter + mapToPixel)
+        android_w, android_h = position_mapping.get_android_screen_size()
+        if android_w > 0 and android_h > 0:
+            ax, ay = position_mapping.map_pc_to_android(
+                pos[0], pos[1], device_direction,
+                screen_width, screen_height, android_w, android_h)
+            position_mapping.warp_android_pointer(ax, ay)
         main_schedule_toggle(True)
 
     def is_switch_okay(dir: str, x: int, y: int) -> bool:

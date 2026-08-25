@@ -63,6 +63,8 @@ def TouchMoveEvent(position: ScreenPosition) -> InjectTouchEvent:
     return InjectTouchEvent(
         position,
         AMotionEventAction.AMOTION_EVENT_ACTION_HOVER_MOVE,
+        AMotionEventButtons.AMOTION_EVENT_BUTTON_NONE,
+        AMotionEventButtons.AMOTION_EVENT_BUTTON_NONE,
     )
 def TouchClickEvent(position: ScreenPosition, button: Button, pressed: bool) -> InjectTouchEvent:
     abutton = None

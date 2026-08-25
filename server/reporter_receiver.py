@@ -9,7 +9,9 @@ from utils.logger import LOGGER, LogType
 from utils.network import get_port
 
 PACKAGE_NAME = "com.bhznjns.inputsharereporter"
-PACKAGE_VERSION = "1.1.0"
+PACKAGE_VERSION = "1.1.3"
+# abstract socket name the Android reporter's LocalServerSocket binds to
+ABSTRACT_SOCKET_NAME = "inputsharereporter"
 ENTRY_ACTIVITY_NAME = ".MainActivity"
 SERVER_EXECUTABLE_NAME = "reporter.apk"
 SERVER_PORT = get_port("reporter_port", 61625)

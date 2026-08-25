@@ -104,3 +104,13 @@ def get_display_size(adb_client: adbutils.AdbClient) -> tuple[int, int]:
     size = size_match.group(0).split('=')[1]
     width, height = map(int, size.split('x'))
     return (width, height)
+
+def get_device_screen_size() -> tuple[int, int] | Exception:
+    """Return the current (rotation-aware) screen size of the selected device."""
+    device = get_adb_device()
+    if isinstance(device, Exception): return device
+    output = str(device.shell("dumpsys window displays"))
+    match = re.search(r'cur=(\d+)x(\d+)', output)
+    if match is None:
+        return Exception("Failed to parse device screen size")
+    return int(match.group(1)), int(match.group(2))
