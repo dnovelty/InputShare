@@ -10,6 +10,23 @@ from utils.logger import LOGGER, LogType
 
 EDGE_PORTAL_LOOP_INTERVAL_SEC = 1 / 1000
 
+# --- Directions, mirroring deskflow's `Direction` enum ---
+class EdgeDirection:
+    NONE   = "none"
+    LEFT   = "left"
+    RIGHT  = "right"
+    TOP    = "top"
+    BOTTOM = "bottom"
+
+# --- Corner masks, mirroring deskflow's corner masks (s_topLeftCornerMask, ...) ---
+class Corner:
+    NONE          = 0x00
+    TOP_LEFT      = 0x01
+    TOP_RIGHT     = 0x02
+    BOTTOM_LEFT   = 0x04
+    BOTTOM_RIGHT  = 0x08
+    ALL           = TOP_LEFT | TOP_RIGHT | BOTTOM_LEFT | BOTTOM_RIGHT
+
 screen_width, screen_height = screen_size()
 mouse_controller = pynput.mouse.Controller()
 pause_event = threading.Event()
@@ -29,13 +46,22 @@ def call_edge_toggling_callbacks():
 config = get_config()
 
 is_edge_toggling_enabled = config.edge_toggling
-if is_edge_toggling_enabled:
-    device_position     = config.device_position
-    trigger_margin      = config.trigger_margin
-    is_device_at_top    = device_position == DevicePosition.TOP
-    is_device_at_right  = device_position == DevicePosition.RIGHT
-    is_device_at_bottom = device_position == DevicePosition.BOTTOM
-    is_device_at_left   = device_position == DevicePosition.LEFT
+device_position     = config.device_position
+trigger_margin      = config.trigger_margin   # deskflow `switchCornerSize` (corner dead-zone size)
+switch_delay        = config.switch_delay     # deskflow `switchDelay` (ms), 0 = switch immediately
+
+is_device_at_top    = device_position == DevicePosition.TOP
+is_device_at_right  = device_position == DevicePosition.RIGHT
+is_device_at_bottom = device_position == DevicePosition.BOTTOM
+is_device_at_left   = device_position == DevicePosition.LEFT
+
+# the direction that has a "neighbor" (the single Android device)
+device_direction = (
+    EdgeDirection.TOP    if is_device_at_top    else
+    EdgeDirection.RIGHT  if is_device_at_right  else
+    EdgeDirection.BOTTOM if is_device_at_bottom else
+    EdgeDirection.LEFT
+)
 
 def pause_edge_toggling():
     LOGGER.write(LogType.Info, "Edge toggling paused.")
@@ -44,48 +70,163 @@ def resume_edge_toggling():
     LOGGER.write(LogType.Info, "Edge toggling resumed.")
     pause_edge_toggling_event.clear()
 
+def get_corner(x: int, y: int, size: int) -> int:
+    """Port of deskflow `Server::getCorner` (src/lib/server/Server.cpp).
+
+    Returns the corner mask the cursor is in, or `Corner.NONE`. `size` is the
+    corner dead-zone size (deskflow's `switchCornerSize`).
+    """
+    x_side = -1 if x <= 0 else (1 if x >= screen_width - 1 else 0)
+    y_side = -1 if y <= 0 else (1 if y >= screen_height - 1 else 0)
+
+    if x_side != 0:
+        if y < size:
+            return Corner.TOP_LEFT if x_side < 0 else Corner.TOP_RIGHT
+        elif y >= screen_height - size:
+            return Corner.BOTTOM_LEFT if x_side < 0 else Corner.BOTTOM_RIGHT
+
+    if y_side != 0:
+        if x < size:
+            return Corner.TOP_LEFT if y_side < 0 else Corner.BOTTOM_LEFT
+        elif x >= screen_width - size:
+            return Corner.TOP_RIGHT if y_side < 0 else Corner.BOTTOM_RIGHT
+
+    return Corner.NONE
+
 def create_edge_portal():
     from input.controller import schedule_toggle as main_schedule_toggle
+
+    cursor_pos_before_toggling = None
 
     def return_to_before_toggling():
         nonlocal cursor_pos_before_toggling
         SIDE_MARGIN = 2
         if pause_event.is_set() or pause_edge_toggling_event.is_set(): return
-        if cursor_pos_before_toggling == None: return
+        if cursor_pos_before_toggling is None: return
         temp_x, temp_y = cursor_pos_before_toggling
         if   is_device_at_right : mouse_controller.position = (temp_x - SIDE_MARGIN, temp_y)
         elif is_device_at_left  : mouse_controller.position = (SIDE_MARGIN, temp_y)
         elif is_device_at_top   : mouse_controller.position = (temp_x, SIDE_MARGIN)
         elif is_device_at_bottom: mouse_controller.position = (temp_x, temp_y - SIDE_MARGIN)
     append_edge_toggling_callback(return_to_before_toggling)
-    cursor_pos_before_toggling = None
+
+    # --- switch state machine (port of Server::m_switchDir / m_switchWaitTimer) ---
+    switch_dir = EdgeDirection.NONE
+    switch_wait_start = None
+
+    def stop_switch():
+        nonlocal switch_dir, switch_wait_start
+        switch_dir = EdgeDirection.NONE
+        switch_wait_start = None
+
+    def start_switch_wait():
+        nonlocal switch_wait_start
+        switch_wait_start = time.perf_counter()
+
+    def is_switch_wait_started() -> bool:
+        return switch_wait_start is not None
+
+    def switch_to_device(pos: tuple[int, int]):
+        nonlocal cursor_pos_before_toggling
+        cursor_pos_before_toggling = pos
+        main_schedule_toggle(True)
+
+    def is_switch_okay(dir: str, x: int, y: int) -> bool:
+        """Port of deskflow `Server::isSwitchOkay` (src/lib/server/Server.cpp).
+
+        Returns `True` when the switch should happen immediately, otherwise
+        updates the switch state machine (wait / stop) and returns `False`.
+        """
+        nonlocal switch_dir
+
+        # no neighbor in this direction -> don't switch, don't try to switch later
+        if dir != device_direction:
+            stop_switch()
+            return False
+
+        # note if the switch direction has changed
+        is_new_direction = (dir != switch_dir)
+        if is_new_direction or switch_dir == EdgeDirection.NONE:
+            switch_dir = dir
+
+        prevent_switch = False
+
+        # if waiting before a switch then prepare to switch later
+        if switch_delay > 0:
+            if is_new_direction or not is_switch_wait_started():
+                start_switch_wait()
+            prevent_switch = True
+
+        # locked corner? (deskflow: getCorner & switchCorners, switchCornerSize)
+        if trigger_margin > 0 and get_corner(x, y, trigger_margin) != Corner.NONE:
+            prevent_switch = True
+            stop_switch()
+
+        # locked to screen (deskflow: isLockedToScreen)
+        if pause_edge_toggling_event.is_set():
+            prevent_switch = True
+            stop_switch()
+
+        return not prevent_switch
 
     while not close_event.is_set():
         temp_pos = mouse_controller.position
-        if temp_pos == None:
+        if temp_pos is None:
             # since the value of `mouse_controller.position` may be None sometimes,
             # make it a check here.
             # see this issue: https://github.com/moses-palmer/pynput/issues/559
             time.sleep(EDGE_PORTAL_LOOP_INTERVAL_SEC)
             continue
         x, y = temp_pos
-        is_at_left_side = x <= 0
-        is_at_right_side = x >= screen_width - 1
-        is_at_top_side = y <= 0
-        is_at_bottom_side = y >= screen_height - 1
 
         if pause_event.is_set():
+            # --- input NOT redirected: PC -> Android switch (deskflow onMouseMovePrimary) ---
             if not is_edge_toggling_enabled or pause_edge_toggling_event.is_set():
                 time.sleep(EDGE_PORTAL_LOOP_INTERVAL_SEC)
                 continue
-            is_y_at_target_range = trigger_margin < y < screen_height - trigger_margin
-            if (is_device_at_right  and is_at_right_side and is_y_at_target_range) or\
-               (is_device_at_left   and is_at_left_side  and is_y_at_target_range) or\
-               (is_device_at_top    and is_at_top_side)    or\
-               (is_device_at_bottom and is_at_bottom_side):
-                cursor_pos_before_toggling = temp_pos
-                main_schedule_toggle(True)
+
+            # jump-zone detection (deskflow jump zone == 1px, i.e. "at the edge")
+            dirh = EdgeDirection.NONE
+            dirv = EdgeDirection.NONE
+            if x <= 0:
+                dirh = EdgeDirection.LEFT
+            elif x >= screen_width - 1:
+                dirh = EdgeDirection.RIGHT
+            if y <= 0:
+                dirv = EdgeDirection.TOP
+            elif y >= screen_height - 1:
+                dirv = EdgeDirection.BOTTOM
+
+            if dirh == EdgeDirection.NONE and dirv == EdgeDirection.NONE:
+                # still on local screen -> cancel any pending switch (deskflow noSwitch)
+                stop_switch()
+                time.sleep(EDGE_PORTAL_LOOP_INTERVAL_SEC)
+                continue
+
+            # in a corner there may be a neighbor both horizontally and vertically,
+            # so check both directions (deskflow onMouseMovePrimary)
+            switched = False
+            for dir in (dirh, dirv):
+                if dir == EdgeDirection.NONE:
+                    continue
+                if is_switch_okay(dir, x, y):
+                    switch_to_device((x, y))
+                    stop_switch()
+                    switched = True
+                    break
+
+            # switch-wait timeout (deskflow handleSwitchWaitTimeout)
+            if not switched and switch_dir != EdgeDirection.NONE \
+                    and switch_delay > 0 and is_switch_wait_started():
+                if time.perf_counter() - switch_wait_start >= switch_delay / 1000.0:
+                    switch_to_device((x, y))
+                    stop_switch()
         else:
+            # --- input redirected: wrap-around portal (keep cursor from getting stuck) ---
+            is_at_left_side = x <= 0
+            is_at_right_side = x >= screen_width - 1
+            is_at_top_side = y <= 0
+            is_at_bottom_side = y >= screen_height - 1
             if is_at_left_side or is_at_right_side or is_at_top_side or is_at_bottom_side:
                 edge_portal_passing_event.set()
             if is_at_left_side:

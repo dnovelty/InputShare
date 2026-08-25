@@ -146,6 +146,23 @@ def mount_elements(root: ctk.CTk):
             text=i18n(["Prevents triggers when the mouse reaches the corners.\nLarger values reduce accidents.",
                        "避免鼠标触及屏幕角落时触发切换。更大的值可以避免误操作。"]))
 
+        switch_delay_label = ctk.CTkLabel(
+            master=edge_toggling_frame,
+            font=larger_font,
+            text=i18n(["Switch Delay (ms): ", "切换等待时长（毫秒）："]))
+        switch_delay_entry = ctk.CTkEntry(
+            master=edge_toggling_frame,
+            font=normal_font,
+            textvariable=switch_delay_var,
+            validate="key",
+            validatecommand=vcmd)
+        switch_delay_info_label = ctk.CTkLabel(
+            master=edge_toggling_frame,
+            font=smaller_font,
+            justify="left",
+            text=i18n(["Time the mouse must stay on the edge before switching.\n0 switches immediately.",
+                       "鼠标贴边后需要停留多久才切换。0 表示立即切换。"]))
+
         edge_toggling_frame.pack(fill="x", pady=(20, 0))
         edge_toggling_label.grid(row=0, column=0, padx=(20, 0), sticky="w")
         edge_toggling_checkbox.grid(row=0, column=1, sticky="w")
@@ -160,6 +177,10 @@ def mount_elements(root: ctk.CTk):
         trigger_margin_label.grid(row=7, column=0, padx=(20, 0), pady=(6, 0), sticky="w")
         trigger_margin_entry.grid(row=7, column=1, pady=(6, 0), sticky="w")
         trigger_margin_info_label.grid(row=8, column=0, columnspan=2, padx=20, sticky="w")
+
+        switch_delay_label.grid(row=9, column=0, padx=(20, 0), pady=(6, 0), sticky="w")
+        switch_delay_entry.grid(row=9, column=1, pady=(6, 0), sticky="w")
+        switch_delay_info_label.grid(row=10, column=0, columnspan=2, padx=20, sticky="w")
 
     def keep_wakeup_section():
         nonlocal settings_scroll_frame, smaller_font, normal_font, larger_font, keep_wakeup_var
@@ -215,6 +236,7 @@ def mount_elements(root: ctk.CTk):
         config.edge_toggling   = edge_toggling_var.get()
         config.device_position = device_position_var.get()
         config.trigger_margin  = int(trigger_margin_var.get())
+        config.switch_delay    = int(switch_delay_var.get())
         config.keep_wakeup     = keep_wakeup_var.get()
         config.language        = language_var.get()
         root.destroy()
@@ -232,6 +254,7 @@ def mount_elements(root: ctk.CTk):
     edge_toggling_var   = ctk.BooleanVar(master=settings_scroll_frame, value=config.edge_toggling)
     device_position_var = ctk.StringVar (master=settings_scroll_frame, value=config.device_position)
     trigger_margin_var  = ctk.StringVar (master=settings_scroll_frame, value=str(config.trigger_margin))
+    switch_delay_var    = ctk.StringVar (master=settings_scroll_frame, value=str(config.switch_delay))
     keep_wakeup_var     = ctk.BooleanVar(master=settings_scroll_frame, value=config.keep_wakeup)
     language_var        = ctk.StringVar (master=settings_scroll_frame, value=i18n([ENGLISH_LANGUAGE, CHINESE_LANGUAGE]))
 

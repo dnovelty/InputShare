@@ -21,6 +21,7 @@ class ConfigFile:
     edge_toggling: bool = False
     device_position: str = DevicePosition.RIGHT
     trigger_margin: int = 80
+    switch_delay: int = 0
     keep_wakeup: bool = False
     language: str = current_language_code() or ENGLISH_LANGUAGE
 
