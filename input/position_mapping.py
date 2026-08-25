@@ -14,6 +14,14 @@ RIGHT = "right"
 TOP = "top"
 BOTTOM = "bottom"
 
+# The Android return-edge strip (`SideLineOverlay`) is 8dp wide. When warping the
+# cursor on switch, enter this many pixels *inside* the screen so the cursor does
+# not start ON that strip; otherwise the strip's one-shot hover trigger fires
+# immediately (and is swallowed by the toggle debounce), latching it until the
+# cursor exits and re-enters. Mirrors deskflow's `avoidJumpZone`. 48px > 8dp on
+# any density up to 6x.
+JUMP_ZONE_PX = 48
+
 _android_width = 0
 _android_height = 0
 
@@ -90,6 +98,32 @@ def map_pc_to_android(
         t = (pc_x + 0.5) / pc_w
         android_x = int(t * android_w)
         android_y = android_h - 1 if direction == TOP else 0
+
+    android_x = max(0, min(android_w - 1, android_x))
+    android_y = max(0, min(android_h - 1, android_y))
+    return android_x, android_y
+
+
+def avoid_jump_zone(
+    android_x: int, android_y: int,
+    direction: str,
+    android_w: int, android_h: int,
+) -> tuple[int, int]:
+    """Move the entry position inward so it is not on the return-edge strip.
+
+    Port of deskflow ``Server::avoidJumpZone``, applied to the Android screen
+    (whose switch-back is driven by the edge strip rather than server-side
+    position tracking). Keeps the fraction-mapped coordinate along the edge and
+    only shifts the perpendicular one inward.
+    """
+    if direction == RIGHT:
+        android_x = JUMP_ZONE_PX
+    elif direction == LEFT:
+        android_x = android_w - 1 - JUMP_ZONE_PX
+    elif direction == TOP:
+        android_y = android_h - 1 - JUMP_ZONE_PX
+    elif direction == BOTTOM:
+        android_y = JUMP_ZONE_PX
 
     android_x = max(0, min(android_w - 1, android_x))
     android_y = max(0, min(android_h - 1, android_y))

@@ -141,12 +141,16 @@ def create_edge_portal():
         nonlocal cursor_pos_before_toggling
         cursor_pos_before_toggling = pos
         # fraction-map the PC cursor's exit position to an Android entry position
-        # and warp the Android pointer there (deskflow switchScreen/enter + mapToPixel)
+        # and warp the Android pointer there (deskflow switchScreen/enter + mapToPixel).
+        # then move it inward so it does not sit on the return-edge strip, which
+        # would immediately re-trigger a switch-back (deskflow avoidJumpZone).
         android_w, android_h = position_mapping.get_android_screen_size()
         if android_w > 0 and android_h > 0:
             ax, ay = position_mapping.map_pc_to_android(
                 pos[0], pos[1], device_direction,
                 screen_width, screen_height, android_w, android_h)
+            ax, ay = position_mapping.avoid_jump_zone(
+                ax, ay, device_direction, android_w, android_h)
             position_mapping.warp_android_pointer(ax, ay)
         main_schedule_toggle(True)
 
