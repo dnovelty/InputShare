@@ -26,6 +26,12 @@ MouseMoveCallback = Callable[[int, int, bool], CallbackResult]
 MouseClickCallback = Callable[[int, int, mouse.Button, bool, bool], CallbackResult]
 MouseScrollCallback = Callable[[int, int, int, int, bool], CallbackResult]
 
+# When the edge portal wraps the hidden PC cursor across the screen, pynput can
+# report that teleport as one huge mouse move. A real mouse move is far smaller,
+# so treat anything this large as a wrap-around artifact and drop it (otherwise
+# the Android cursor visibly teleports across the phone).
+MOUSE_TELEPORT_THRESHOLD_PX = 500
+
 def _customized_shortcuts(
     k: SDL_Scancode | HIDKeymod | AKeyCode,
     keymod_state: KeymodStateStore,
@@ -213,6 +219,11 @@ def callback_context_wrapper(
             edge_portal_passing_event.clear()
             return None
         if last_mouse_point is None:
+            last_mouse_point = (cur_x, cur_y)
+            return None
+        # drop wrap-around teleports that slipped past the passing event
+        if abs(cur_x - last_mouse_point[0]) > MOUSE_TELEPORT_THRESHOLD_PX or \
+           abs(cur_y - last_mouse_point[1]) > MOUSE_TELEPORT_THRESHOLD_PX:
             last_mouse_point = (cur_x, cur_y)
             return None
         diff_movement = _compute_mouse_pointer_diff(cur_x, cur_y, *last_mouse_point)
