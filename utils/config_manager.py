@@ -25,6 +25,10 @@ class ConfigFile:
     keep_wakeup: bool = False
     language: str = current_language_code() or ENGLISH_LANGUAGE
 
+    # 关闭键鼠共享时调暗手机屏幕
+    dim_screen_when_disabled: bool = True
+    dim_brightness: int = 5  # 调暗后的亮度百分比
+
 class ConfigManager:
     def __init__(self):
         file_path = self.path = ConfigManager.storage_path()

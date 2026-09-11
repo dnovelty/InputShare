@@ -55,18 +55,18 @@ def start_server(device: AdbDevice) -> Exception | None:
         return e
 
 def server_receiver_factory() -> VoidCallable:
-    from input.controller import schedule_toggle as main_schedule_toggle
+    from input.controller import schedule_toggle as main_schedule_toggle,\
+                                 is_share_enabled
     from input.edge_portal import pause_edge_toggling, resume_edge_toggling,\
                                   call_edge_toggling_callbacks
-    from utils.config_manager import get_config
-    edge_toggling_enabled = get_config().edge_toggling
 
     def data_recv(client_socket: socket.socket):
         data = client_socket.recv(16)
         if len(data) > 0:
             event_type = data[0]
             if   event_type == SERVER_EVENT_KEEPALIVE: pass
-            elif event_type == SERVER_EVENT_TOGGLE and edge_toggling_enabled:
+            # 手机端请求切回电脑：仅共享开启时生效
+            elif event_type == SERVER_EVENT_TOGGLE and is_share_enabled():
                 main_schedule_toggle(False); call_edge_toggling_callbacks()
             elif event_type == SERVER_EVENT_EDGE_TOGGLING_PAUSE : pause_edge_toggling()
             elif event_type == SERVER_EVENT_EDGE_TOGGLING_RESUME: resume_edge_toggling()

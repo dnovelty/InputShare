@@ -44,6 +44,30 @@ def call_edge_toggling_callbacks():
     global edge_toggling_callbacks
     for callback in edge_toggling_callbacks: callback()
 
+# 贴边切换前记录的 PC 光标位置（用于回位）
+cursor_pos_before_toggling: tuple[int, int] | None = None
+
+def return_cursor_to_pc():
+    """把 Android 光标位置按比例映射回 PC（由手机切回/关闭共享时调用）。"""
+    global cursor_pos_before_toggling
+    SIDE_MARGIN = 2
+    if cursor_pos_before_toggling is None: return
+    android_w, android_h = position_mapping.get_android_screen_size()
+    if android_w > 0 and android_h > 0:
+        # 按比例把 Android 光标的退出位置映射回 PC 屏幕
+        ax, ay = position_mapping.get_android_cursor()
+        pc_x, pc_y = position_mapping.map_android_to_pc(
+            ax, ay, device_direction,
+            screen_width, screen_height, android_w, android_h, SIDE_MARGIN)
+        mouse_controller.position = (pc_x, pc_y)
+    else:
+        # 退化方案：回到贴边切换前的位置（向内偏移，避免贴在边上再次触发）
+        temp_x, temp_y = cursor_pos_before_toggling
+        if   is_device_at_right : mouse_controller.position = (temp_x - SIDE_MARGIN, temp_y)
+        elif is_device_at_left  : mouse_controller.position = (SIDE_MARGIN, temp_y)
+        elif is_device_at_top   : mouse_controller.position = (temp_x, SIDE_MARGIN)
+        elif is_device_at_bottom: mouse_controller.position = (temp_x, temp_y - SIDE_MARGIN)
+
 config = get_config()
 
 is_edge_toggling_enabled = config.edge_toggling
@@ -95,30 +119,13 @@ def get_corner(x: int, y: int, size: int) -> int:
     return Corner.NONE
 
 def create_edge_portal():
-    from input.controller import schedule_toggle as main_schedule_toggle
-
-    cursor_pos_before_toggling = None
+    from input.controller import schedule_toggle as main_schedule_toggle,\
+                                 is_share_enabled
 
     def return_to_before_toggling():
-        nonlocal cursor_pos_before_toggling
-        SIDE_MARGIN = 2
-        if pause_event.is_set() or pause_edge_toggling_event.is_set(): return
-        if cursor_pos_before_toggling is None: return
-        android_w, android_h = position_mapping.get_android_screen_size()
-        if android_w > 0 and android_h > 0:
-            # fraction-map the Android cursor's exit position back to the PC
-            ax, ay = position_mapping.get_android_cursor()
-            pc_x, pc_y = position_mapping.map_android_to_pc(
-                ax, ay, device_direction,
-                screen_width, screen_height, android_w, android_h, SIDE_MARGIN)
-            mouse_controller.position = (pc_x, pc_y)
-        else:
-            # fallback: return to the exact position before toggling
-            temp_x, temp_y = cursor_pos_before_toggling
-            if   is_device_at_right : mouse_controller.position = (temp_x - SIDE_MARGIN, temp_y)
-            elif is_device_at_left  : mouse_controller.position = (SIDE_MARGIN, temp_y)
-            elif is_device_at_top   : mouse_controller.position = (temp_x, SIDE_MARGIN)
-            elif is_device_at_bottom: mouse_controller.position = (temp_x, temp_y - SIDE_MARGIN)
+        # 由 reporter TOGGLE 事件触发；Android 端暂停贴边切换时不回位
+        if pause_edge_toggling_event.is_set(): return
+        return_cursor_to_pc()  # 复用模块级回位逻辑（controller.py 关闭共享时也调用）
     append_edge_toggling_callback(return_to_before_toggling)
 
     # --- switch state machine (port of Server::m_switchDir / m_switchWaitTimer) ---
@@ -138,7 +145,7 @@ def create_edge_portal():
         return switch_wait_start is not None
 
     def switch_to_device(pos: tuple[int, int]):
-        nonlocal cursor_pos_before_toggling
+        global cursor_pos_before_toggling  # 变量为模块级，须用 global 绑定
         cursor_pos_before_toggling = pos
         # fraction-map the PC cursor's exit position to an Android entry position
         # and warp the Android pointer there (deskflow switchScreen/enter + mapToPixel).
@@ -204,7 +211,9 @@ def create_edge_portal():
 
         if pause_event.is_set():
             # --- input NOT redirected: PC -> Android switch (deskflow onMouseMovePrimary) ---
-            if not is_edge_toggling_enabled or pause_edge_toggling_event.is_set():
+            # 贴边切换需要：贴边功能开启 且 键鼠共享开启 且 未被手机端暂停
+            if not is_edge_toggling_enabled or not is_share_enabled() \
+                    or pause_edge_toggling_event.is_set():
                 time.sleep(EDGE_PORTAL_LOOP_INTERVAL_SEC)
                 continue
 

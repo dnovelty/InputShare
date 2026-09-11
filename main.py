@@ -10,6 +10,7 @@ from input.callbacks import callback_context_wrapper
 from ui.connecting_window import open_connecting_window
 from ui.tray import tray_thread_factory
 from utils.adb_controller import ADBWiredConnectionError, append_adb_device, get_adb_client, get_device_screen_size, start_adb_server
+from utils.brightness_controller import restore_screen
 from utils.config_manager import get_config
 from utils.i18n import get_i18n
 from utils.logger import LogType, LOGGER
@@ -96,6 +97,7 @@ if __name__ == "__main__":
     stop_scrcpy_receiver()
     stop_reporter_receiver and stop_reporter_receiver() # type: ignore
     scrcpy_server_process.terminate()
+    restore_screen()  # 退出前恢复手机屏幕亮度（若之前调暗过）
 
     close_notification_resolver(main_errno)
     close_tray()

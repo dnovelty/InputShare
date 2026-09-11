@@ -4,7 +4,7 @@ import pystray
 
 from PIL import Image
 
-from input.controller import schedule_toggle as main_schedule_toggle,\
+from input.controller import is_share_enabled, schedule_share_toggle,\
                              schedule_exit as main_schedule_exit
 from scrcpy_client.clipboard_event import SetClipboardEvent
 from ui import ICON_ICO_PATH
@@ -39,6 +39,9 @@ def create_tray(client_socket: socket.socket):
         get_config().share_keyboard_only = not item.checked
     def toggle_sync_clipboard(_, item: MenuItem):
         get_config().sync_clipboard = not item.checked
+    def toggle_share_enabled():
+        # 切换键鼠共享总开关（允许贴边切换/调暗亮度等）
+        schedule_share_toggle()
 
     def exit_tray():
         global tray
@@ -51,7 +54,8 @@ def create_tray(client_socket: socket.socket):
     tray_menu = Menu(
         MenuItem(
             i18n(["Enable sharing", "开启键鼠共享"]),
-            action=main_schedule_toggle),
+            action=toggle_share_enabled,
+            checked=lambda _: is_share_enabled()),  # 开启时打勾，关闭时去勾
         MenuItem(
             i18n(["Send clipboard text", "发送当前剪贴板文本"]),
             action=send_clipboard_text),

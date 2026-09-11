@@ -7,14 +7,16 @@ from scrcpy_client.hid_event import KeyEmptyEvent
 from input.callbacks import KeyEventCallback,\
     MouseClickCallback, MouseMoveCallback, MouseScrollCallback,\
     SendDataCallback, SendDataAsyncCallback
-from input.edge_portal import edge_portal_thread_factory
+from input.edge_portal import edge_portal_thread_factory, return_cursor_to_pc
 from server.scrcpy_receiver import ReceivedClipboardText
 from ui.fullscreen_mask import mask_thread_factory
+from utils.brightness_controller import dim_screen, restore_screen
 from utils.clipboard import Clipboard
 from utils.config_manager import get_config
 from utils.logger import LOGGER, LogType
 
 is_redirecting = False
+share_enabled = True  # 键鼠共享总开关：开启时允许贴边切换，关闭时禁止并强制切回电脑
 keyboard_controller = keyboard.Controller()
 toggle_event = threading.Event()
 exit_event = threading.Event()
@@ -43,7 +45,45 @@ def schedule_exit(errno: Exception | None = None):
     schedule_toggle()
     exit_event.set()
 
-switch_hotkey = keyboard.HotKey(keyboard.HotKey.parse(SWITCH_KEY_COMBINATION), schedule_toggle)
+def is_share_enabled() -> bool:
+    """返回键鼠共享是否开启。"""
+    return share_enabled
+
+def schedule_share_toggle(force: bool | None = None):
+    """切换键鼠共享总开关（托盘菜单与 ctrl+alt+s 热键入口）。
+
+    关闭时：禁止贴边切换，若正在控制手机则强制切回电脑并回位光标，
+    同时按配置调暗手机屏幕；开启时：恢复手机屏幕亮度。
+    """
+    global share_enabled, is_redirecting, toggle_event, last_toggling_time
+    current_time = time.perf_counter()
+    if current_time - last_toggling_time < DEBOUNCING_DURATION:
+        LOGGER.write(LogType.Info, "Share toggling debounced."); return
+    last_toggling_time = current_time
+
+    if force is None:
+        # 热键触发：释放可能按住的 ctrl/alt，避免按键卡住
+        keyboard_controller.release(keyboard.Key.ctrl)
+        keyboard_controller.release(keyboard.Key.alt)
+
+    new_state = (not share_enabled) if force is None else bool(force)
+    if new_state == share_enabled: return  # 状态未变化，无需处理
+    share_enabled = new_state
+
+    if new_state:
+        restore_screen()  # 开启共享：恢复手机亮度
+    else:
+        # 关闭共享：若正在控制手机则强制切回电脑
+        # （直接置状态并唤醒主循环，避免被 schedule_toggle 的防抖拦截）
+        if is_redirecting:
+            is_redirecting = False
+            toggle_event.set()
+            return_cursor_to_pc()  # 把 Android 光标位置映射回 PC
+        # 按配置调暗手机屏幕
+        if get_config().dim_screen_when_disabled:
+            dim_screen()
+
+switch_hotkey = keyboard.HotKey(keyboard.HotKey.parse(SWITCH_KEY_COMBINATION), schedule_share_toggle)
 exit_hotkey = keyboard.HotKey(keyboard.HotKey.parse(EXIT_KEY_COMBINATION), schedule_exit)
 
 def keyboard_press_handler_factory(callback: KeyEventCallback):

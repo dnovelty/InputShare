@@ -203,6 +203,52 @@ def mount_elements(root: ctk.CTk):
         check_box.grid(row=0, column=1)
         info_label.grid(row=1, column=0, columnspan=2, padx=20)
 
+    def dim_screen_section():
+        # 关闭共享时调暗手机屏幕：启用开关 + 调暗亮度百分比
+        nonlocal settings_scroll_frame, smaller_font, normal_font, larger_font,\
+                 dim_screen_var, dim_brightness_var
+        dim_frame = ctk.CTkFrame(master=settings_scroll_frame)
+        dim_label = ctk.CTkLabel(
+            master=dim_frame,
+            font=larger_font,
+            text=i18n(["Dim Screen When Disabled: ", "关闭共享时调暗屏幕："]))
+        check_box = ctk.CTkCheckBox(
+            master=dim_frame,
+            text="",
+            variable=dim_screen_var)
+        info_label = ctk.CTkLabel(
+            master=dim_frame,
+            font=smaller_font,
+            text=i18n(["When enabled, the Android screen will be dimmed when sharing is disabled, and restored when re-enabled.",
+                       "启用后，关闭键鼠共享时将调暗安卓设备屏幕，重新开启时恢复原亮度。"]))
+
+        validate_entry = lambda text: len(text) == 0 or text.isdigit()
+        vcmd = (dim_frame.register(validate_entry), "%P")
+        brightness_label = ctk.CTkLabel(
+            master=dim_frame,
+            font=larger_font,
+            text=i18n(["Dim Brightness (%): ", "调暗亮度（%）："]))
+        brightness_entry = ctk.CTkEntry(
+            master=dim_frame,
+            font=normal_font,
+            textvariable=dim_brightness_var,
+            validate="key",
+            validatecommand=vcmd)
+        brightness_info_label = ctk.CTkLabel(
+            master=dim_frame,
+            font=smaller_font,
+            justify="left",
+            text=i18n(["Brightness (0-100) the Android screen is dimmed to when sharing is disabled.",
+                       "关闭共享时安卓屏幕降低到的亮度（0-100）。"]))
+
+        dim_frame.pack(fill="x", pady=(20, 0))
+        dim_label.grid(row=0, column=0, padx=(20, 0), sticky="w")
+        check_box.grid(row=0, column=1, sticky="w")
+        info_label.grid(row=1, column=0, columnspan=2, padx=20, sticky="w")
+        brightness_label.grid(row=2, column=0, padx=(20, 0), pady=(6, 0), sticky="w")
+        brightness_entry.grid(row=2, column=1, pady=(6, 0), sticky="w")
+        brightness_info_label.grid(row=3, column=0, columnspan=2, padx=20, sticky="w")
+
     def mount_language_section():
         nonlocal settings_scroll_frame, smaller_font, normal_font, larger_font, language_var
         language_frame = ctk.CTkFrame(master=settings_scroll_frame)
@@ -256,12 +302,15 @@ def mount_elements(root: ctk.CTk):
     trigger_margin_var  = ctk.StringVar (master=settings_scroll_frame, value=str(config.trigger_margin))
     switch_delay_var    = ctk.StringVar (master=settings_scroll_frame, value=str(config.switch_delay))
     keep_wakeup_var     = ctk.BooleanVar(master=settings_scroll_frame, value=config.keep_wakeup)
+    dim_screen_var      = ctk.BooleanVar(master=settings_scroll_frame, value=config.dim_screen_when_disabled)
+    dim_brightness_var  = ctk.StringVar (master=settings_scroll_frame, value=str(config.dim_brightness))
     language_var        = ctk.StringVar (master=settings_scroll_frame, value=i18n([ENGLISH_LANGUAGE, CHINESE_LANGUAGE]))
 
     mouse_theme_section()
     mount_speed_section()
     edge_toggling_section()
     keep_wakeup_section()
+    dim_screen_section()
     mount_language_section()
 
     # action buttons section
