@@ -95,6 +95,20 @@ def resume_edge_toggling():
     LOGGER.write(LogType.Info, "Edge toggling resumed.")
     pause_edge_toggling_event.clear()
 
+def reset_portal_state():
+    """断开重连、重建会话前重置贴边切换模块状态。
+
+    回调列表必须清空：每个会话的 create_edge_portal 都会注册回位回调，
+    不清理会导致回调重复累积、多次触发。
+    """
+    global edge_toggling_callbacks, cursor_pos_before_toggling
+    close_event.clear()
+    pause_event.set()
+    pause_edge_toggling_event.clear()
+    edge_portal_passing_event.clear()
+    edge_toggling_callbacks = []
+    cursor_pos_before_toggling = None
+
 def get_corner(x: int, y: int, size: int) -> int:
     """Port of deskflow `Server::getCorner` (src/lib/server/Server.cpp).
 

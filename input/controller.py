@@ -20,6 +20,7 @@ share_enabled = True  # 键鼠共享总开关：开启时允许贴边切换，�
 keyboard_controller = keyboard.Controller()
 toggle_event = threading.Event()
 exit_event = threading.Event()
+user_exit_event = threading.Event()  # 用户主动退出（热键/托盘），与错误退出区分，供重连等待时判断
 main_errno: Exception | None = None
 
 last_toggling_time  = time.perf_counter()
@@ -40,10 +41,25 @@ def schedule_toggle(force: bool | None = None):
 
 def schedule_exit(errno: Exception | None = None):
     global exit_event, main_errno
-    if errno is not None:
+    # 退出流程已启动则忽略重复/迟到的退出请求（会话结束后台线程的滞后报错）
+    if exit_event.is_set(): return
+    if errno is None:
+        user_exit_event.set()  # 标记为用户主动退出
+    else:
         main_errno = errno
     schedule_toggle()
     exit_event.set()
+
+def reset_controller_state():
+    """断开重连、重建会话前重置控制器状态，避免上一会话残留影响新会话。"""
+    global is_redirecting, share_enabled, main_errno, last_toggling_time
+    is_redirecting = False
+    share_enabled = True
+    main_errno = None
+    last_toggling_time = time.perf_counter()
+    toggle_event.clear()
+    exit_event.clear()
+    user_exit_event.clear()
 
 def is_share_enabled() -> bool:
     """返回键鼠共享是否开启。"""

@@ -53,7 +53,8 @@ def dim_screen():
         LOGGER.write(LogType.Error, "Dim screen failed: " + str(e))
 
 def restore_screen():
-    """恢复手机屏幕亮度（若之前调暗过）。"""
+    """恢复手机屏幕亮度（若之前调暗过）。恢复成功才清除记录，
+    失败时保留记录以便下次（如重连成功后）重试。"""
     global _original_brightness, _original_auto_mode
     if _original_brightness is None:
         return  # 未调暗过，无需恢复
@@ -67,9 +68,8 @@ def restore_screen():
         if _original_auto_mode in ("0", "1"):
             _shell(device, f"settings put system screen_brightness_mode {_original_auto_mode}")
         LOGGER.write(LogType.Info, "Screen brightness restored.")
-    except Exception as e:
-        LOGGER.write(LogType.Error, "Restore screen failed: " + str(e))
-    finally:
         # 用后清空记录，下次调暗时重新记录
         _original_brightness = None
         _original_auto_mode = None
+    except Exception as e:
+        LOGGER.write(LogType.Error, "Restore screen failed: " + str(e))

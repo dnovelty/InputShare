@@ -13,6 +13,8 @@ adb_relative_path = "adb-bin/adb.exe"
 adb_bin_path = Path.joinpath(script_path, adb_relative_path)
 __adb_client_instance: adbutils.AdbClient | None = None
 __adb_device_list: list[adbutils.AdbDevice] = []
+# 最近一次成功连接的无线地址（ip:port），供断开后自动重连使用
+__last_wireless_addr: str | None = None
 os.environ["ADBUTILS_ADB_PATH"] = str(adb_bin_path)
 ADB_BIN_PATH = str(adb_bin_path)
 ADB_SERVER_PORT = 5038
@@ -34,7 +36,16 @@ def get_adb_device(device_index: int = 0) -> adbutils.AdbDevice | Exception:
     return target_device
 
 def append_adb_device(device: adbutils.AdbDevice):
+    # 按 serial 去重：重连后同一设备替换旧记录，避免列表无限增长
+    for i, d in enumerate(__adb_device_list):
+        if d.serial == device.serial:
+            __adb_device_list[i] = device
+            return
     __adb_device_list.append(device)
+
+def get_last_wireless_addr() -> str | None:
+    """返回最近一次成功连接的无线地址，无记录时返回 None。"""
+    return __last_wireless_addr
 
 def start_adb_server():
     command = f"{ADB_BIN_PATH} -P {ADB_SERVER_PORT} start-server"
@@ -71,6 +82,7 @@ def try_pairing(addr: str, pairing_code: str, timeout=3.0) -> bool:
         return False
 
 def try_connect_device(addr: str, timeout: float=3.0) -> adbutils.AdbClient | None:
+    global __last_wireless_addr
     client = get_adb_client()
     try:
         output = client.connect(addr, timeout)
@@ -89,6 +101,8 @@ def try_connect_device(addr: str, timeout: float=3.0) -> adbutils.AdbClient | No
         client.disconnect(addr)
         LOGGER.write(LogType.Error, "Connect failed: " + str(e))
         return None
+    # 连接成功才记录地址，供断开后重连使用
+    __last_wireless_addr = addr
     return client
 
 def get_display_size(adb_client: adbutils.AdbClient) -> tuple[int, int]:

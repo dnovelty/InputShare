@@ -9,6 +9,12 @@ show_event = threading.Event()
 hide_event = threading.Event()
 exit_event = threading.Event()
 
+def reset_mask_events():
+    """断开重连、重建会话前重置蒙版窗口事件，避免残留事件影响新窗口。"""
+    show_event.clear()
+    hide_event.clear()
+    exit_event.clear()
+
 screen_width, screen_height = screen_size()
 
 def check_event(root: ctk.CTk, toplevel: ctk.CTkToplevel):
@@ -72,7 +78,12 @@ def open_mask_window():
     label2.pack(padx=8, pady=4, anchor="w")
 
     root.after(0, check_event, root, label_toplevel)
-    root.mainloop()
+    try:
+        root.mainloop()
+    finally:
+        # 会话结束必须销毁窗口：释放 Tk 默认 root。否则旧解释器残留为默认 root，
+        # 下一次会话的 CTkFont 会跨线程引用它，报 "main thread is not in main loop"
+        root.destroy()
 
 def mask_thread_factory() -> tuple[
     VoidCallable, VoidCallable, VoidCallable,

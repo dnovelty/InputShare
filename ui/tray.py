@@ -3,6 +3,7 @@ import threading
 import pystray
 
 from PIL import Image
+from typing import Callable
 
 from input.controller import is_share_enabled, schedule_share_toggle,\
                              schedule_exit as main_schedule_exit
@@ -20,11 +21,15 @@ MenuItem = pystray.MenuItem
 
 tray = None
 
-def create_tray(client_socket: socket.socket):
+def create_tray(socket_getter: Callable[[], socket.socket | None]):
     global tray
 
     def send_clipboard_text():
-        nonlocal client_socket
+        # 每次点击时动态获取当前 socket，重连后自动使用新连接
+        client_socket = socket_getter()
+        if client_socket is None:
+            LOGGER.write(LogType.Info, "No active device connection, skip sending clipboard.")
+            return
         current_clipboard_content = Clipboard.safe_paste()
         if current_clipboard_content is None:
             return
@@ -32,8 +37,8 @@ def create_tray(client_socket: socket.socket):
         try:
             client_socket.sendall(event.serialize())
         except Exception as e:
+            # 发送失败可能正处于重连阶段，仅记录日志，不退出程序
             LOGGER.write(LogType.Error, "Send data error: " + str(e))
-            exit_tray()
 
     def toggle_share_keyboard_only(_, item: MenuItem):
         get_config().share_keyboard_only = not item.checked
@@ -85,7 +90,7 @@ def create_tray(client_socket: socket.socket):
     LOGGER.write(LogType.Info, "Tray started.")
     tray.run()
 
-def tray_thread_factory(client_socket: socket.socket) -> VoidCallable:
+def tray_thread_factory(socket_getter: Callable[[], socket.socket | None]) -> VoidCallable:
     def close_tray():
         global tray
         if tray is not None: tray.stop()
@@ -93,7 +98,7 @@ def tray_thread_factory(client_socket: socket.socket) -> VoidCallable:
 
     thread = threading.Thread(
         target=create_tray,
-        args=[client_socket],
+        args=[socket_getter],
         daemon=True,
     )
     thread.start()
